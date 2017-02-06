@@ -1,0 +1,11 @@
+add-user:
+    description: "Add a user"
+    params:
+        username:
+            type: string
+            description: ""
+            default: "demo"
+        password:
+            type: string
+            description: ""
+            default: "demo"
