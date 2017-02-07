@@ -7,17 +7,25 @@ from charmhelpers.core.hookenv import (
     open_port,
     open_ports,
     status_set,
+    unit_public_ip,
+    unit_private_ip,
 )
 from charmhelpers.core import (
     templating,
 )
+from charmhelpers.core.host import (
+    service_restart,
+)
 from charms.reactive import (
+    hook,
     remove_state,
     set_state,
     when,
+    when_any,
     when_not,
 )
 import configparser
+import netifaces
 import os
 from subprocess import (
     Popen,
@@ -66,15 +74,39 @@ def add_user():
         remove_state('actions.add-user')
 
 
-@when('config-changed')
-def config_changed():
+@hook('config-changed')
+def sip_config_changed():
     """Update asterisk configuration"""
     try:
-        # cfg = config()
+        cfg = config()
 
-        open_port('5060', 'UDP')
+        pipaddr = unit_private_ip()
+
+        render_sip_config({
+            'general': {
+                'nat': cfg['sip-nat'],
+                'localnet': '{}/{}'.format(pipaddr, get_netmask(pipaddr)),
+                'externip': unit_public_ip(),
+                'port': cfg['sip-port'],
+            },
+        })
+
+        # SIP
+        open_port(cfg['sip-port'], 'UDP')
+
+        # TODO: Make these ports configurable.
+        # Audio RTP
+        open_port('7079', 'UDP')
+
+        # Video RTP
+        open_port('9078', 'UDP')
+
+        # Document what these ports are for
         open_port('4969', 'UDP')
+
         open_ports('10000', '20000', 'UDP')
+
+        reload_config()
 
     except Exception as e:
         log(repr(e))
@@ -124,11 +156,13 @@ def install_asterisk():
         f.write('same = n,Playback(hello-world)\n')
         f.write('same = n, Hangup()\n')
 
+    # config_changed()
+
     reload_config()
 
-    open_port('5060', 'UDP')
-    open_port('', 'UDP')
-    open_ports('10000', '20000', 'UDP')
+    # open_port('5060', 'UDP')
+    # open_port('', 'UDP')
+    # open_ports('10000', '20000', 'UDP')
 
     set_state('asterisk.installed')
     status_set('active', 'Ready!')
@@ -138,20 +172,64 @@ def install_asterisk():
 # utility functions #
 #####################
 
-# class AsteriskConfig:
-#     def __init__(self, filename):
-#         pass
-#
-#     def parse(self, filename):
-#         pass
-#
-#     pass
+def get_netmask(ipaddr):
+    """Get the subnet from the network interfaces bound to an IP address"""
+    for iface in netifaces.interfaces():
+        addrs = netifaces.ifaddresses(iface)
+        for ip in addrs[netifaces.AF_INET]:
+            if ip['addr'] == ipaddr:
+                return ip['netmask']
+
+
+def render_sip_config(kv):
+    """Render a new /etc/asterisk/sip.conf
+
+    The kv param must be grouped by section:
+
+    render_sip_config({
+        'general': {
+            'nat': 'true',
+            'localnet': '1.2.3.4/255.255.255.x',
+            'externip': '2.3.4.5',
+            'port': '5061',
+        },
+        'demo': {
+            'type': 'friend',
+            'context': 'from-internal',
+            'host': 'dynamic',
+            'secret': 'password',
+            'disallow': 'all',
+            'allow': 'ulaw',
+        }
+    })
+    """
+
+    # Load the current configuration
+    ini = configparser.ConfigParser()
+    ini.read('/etc/asterisk/sip.conf')
+
+    # We have one static section - "general" - and dynamic sections by user
+    for key in kv:
+        if key != "general":
+            # Assume this is a user key.
+            if key in ini.sections():
+                """This user already exists."""
+                raise Exception('User {} already exists.'.format(user))
+
+            ini[key] = {}
+
+        for k in kv[key]:
+            ini[key][k] = str(kv[key][k])
+
+    with open('/etc/asterisk/sip.conf', 'w') as configfile:
+        ini.write(configfile)
 
 
 def reload_config():
     """Tell asterisk to reload its configuration"""
     # run("rasterisk -x reload")
-    run("service asterisk restart")
+    # run("service asterisk restart")
+    service_restart('asterisk')
     pass
 
 

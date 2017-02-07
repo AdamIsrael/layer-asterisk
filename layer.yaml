@@ -6,3 +6,4 @@ options:
             - asterisk-modules
             - asterisk-voicemail
             - python3-configobj
+            - python3-netifaces
