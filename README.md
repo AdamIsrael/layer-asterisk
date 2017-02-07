@@ -4,6 +4,11 @@ This is a work-in-progress charm to deploy and operate Asterisk as a
 virtualized network service (VNF), currently focusing on SIP functionality.
 
 This has been successfully tested on LXD and Amazon EC2.
+
+Once the `asterisk` charm has been deployed, configured, and a user added, you
+can test it out by using a SIP phone, configured with the new users credentials,
+and call extension 100. If successful, you should here a brief message.
+
 # Usage
 
 ```
@@ -35,6 +40,7 @@ The charm is pretty limited at the moment.
 - The `pjsip` module is disabled, due to a bug in the Ubuntu 16.04 asterisk package. The package will need to be fixed in order for that module to be enabled.
 - Does not auto-detect NAT
 - Configuration options are limited.
+- dialpans are not configurable yet.
 
 # Configuration
 
